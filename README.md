@@ -9,6 +9,7 @@ A key principle of the project is:
 > Physics-derived quantities are used during training, but are not required during inference.
 
 The goal is therefore to build a practical crystal-structure-only predictor at inference time, while still learning from richer physics-based supervision during training.
+<img width="1916" height="821" alt="ChatGPT Image 2026年4月22日 14_53_45" src="https://github.com/user-attachments/assets/78f3fc39-3296-4164-a728-2e10cb84934c" />
 
 ## Data
 
