@@ -1,4 +1,171 @@
-# Protein-Ligand Graph Preprocessing
+# Binding Affinity Prediction with Physics-Guided GNNs
+
+This repository develops a graph neural network pipeline for protein-ligand binding affinity prediction using structure-based graph representations and physics-derived auxiliary supervision.
+
+The main input is a protein-ligand complex structure. The primary target is the experimental binding free energy, while MM/GBSA or MM/PBSA-derived quantities are used as training-time auxiliary labels.
+
+A key principle is:
+
+> Physics-derived quantities are used during training, but are not required during inference.
+
+The final goal is therefore a practical crystal-structure-only predictor, even when richer MD-derived supervision is used during training.
+
+## Data
+
+For each protein-ligand complex, the project may use:
+
+- crystal complex structure: `complex.pdb`
+- experimental binding free energy, `ΔG`
+- average MM/GBSA or MM/PBSA results from `mmpbsa.out`
+- MD snapshot structures:
+  - `frame_200.pdb`
+  - `frame_250.pdb`
+  - `frame_300.pdb`
+  - `frame_350.pdb`
+  - `frame_400.pdb`
+- frame-level MM/PBSA terms from `snapshot_energy_summary.csv`
+
+The current working set contains five valid complexes:
+
+```text
+6QLN
+6QLO
+6QLP
+6QLR
+6QLT
+```
+
+Each structure is converted into a local ligand-pocket graph containing ligand atoms, nearby protein pocket atoms, and retained pocket-region metals when present.
+
+## Model Variants
+
+### Baseline 1: Crystal Only
+
+Baseline 1 uses only the crystal complex graph to predict experimental binding free energy.
+
+```text
+complex.pdb
+  -> ligand-pocket graph
+  -> GNN encoder
+  -> experimental ΔG
+```
+
+Inputs:
+
+- `complex.pdb`
+
+Targets:
+
+- experimental `ΔG`
+
+### Baseline 2: Crystal + Average MM/PBSA Auxiliary Supervision
+
+Baseline 2 adds trajectory-averaged MM/PBSA-style terms as auxiliary training labels while keeping crystal-only inference.
+
+```text
+complex.pdb
+  -> ligand-pocket graph
+  -> GNN encoder
+  |- experimental ΔG
+  -> average MM/PBSA terms
+```
+
+Inputs:
+
+- `complex.pdb`
+
+Targets:
+
+- experimental `ΔG`
+- average MM/GBSA or MM/PBSA terms from `mmpbsa.out`
+
+### Baseline 3: Crystal Prediction + MD Frame MM/PBSA Auxiliary Supervision
+
+Baseline 3 uses MD frame structures and frame-level MM/PBSA terms during training, but final prediction still depends only on the crystal structure branch.
+
+```text
+crystal graph
+  -> shared GNN encoder
+  -> crystal embedding
+  |- experimental ΔG
+  -> average PB/MM-PBSA terms
+
+MD frame graphs
+  -> same shared GNN encoder
+  -> frame embeddings
+  -> frame-level PB/MM-PBSA terms
+```
+
+The PB/MM-PBSA target vector is:
+
+```text
+[vdw, elec, polar_solv, nonpolar_solv, dispersion, total]
+```
+
+Training inputs:
+
+- `complex.pdb`
+- `frame_200.pdb`
+- `frame_250.pdb`
+- `frame_300.pdb`
+- `frame_350.pdb`
+- `frame_400.pdb`
+
+Targets:
+
+- experimental `ΔG`
+- average PB/MM-PBSA terms
+- frame-level PB/MM-PBSA terms
+
+Inference:
+
+```text
+complex.pdb
+  -> ligand-pocket graph
+  -> shared GNN encoder
+  |- experimental ΔG
+  -> average PB/MM-PBSA terms
+```
+
+No MD frames are required during inference.
+
+### Baseline 4: Baseline 3 + Representation Distillation
+
+Baseline 4 is the next planned variant. It adds representation distillation from MD frame embeddings to the crystal embedding.
+
+MD frame embeddings are mean-pooled into a teacher representation:
+
+```text
+h_teacher = mean(h_200, h_250, h_300, h_350, h_400)
+```
+
+The crystal embedding is projected and trained to match this teacher representation:
+
+```text
+z_crystal = Projector(h_crystal)
+L_distill = MSE(z_crystal, stop_gradient(h_teacher))
+```
+
+Purpose:
+
+- test whether a crystal-only model can learn additional conformational information from MD frame representations during training
+
+Inference:
+
+- same as Baseline 3: only `complex.pdb` is required
+
+## Current Repository Status
+
+- `baseline1`
+  Conceptually defined, but not exposed as a separate standalone training script in the current repository.
+- `baseline2`
+  Implemented and runnable. Includes overfit checks, leave-one-out runs, and a validation-based `Scheme A` protocol.
+- `baseline3`
+  Implemented and tested. The repository already contains the rotating 5-run training workflow and an evaluation script that aggregates the results.
+- `baseline4`
+  Not implemented yet as a separate training pipeline. Only the shared data-preparation step for future frame-based experiments is available.
+
+## Preprocessing overview
 
 This package preprocesses the MMPBSA dataset under `../data/MMPBSA/` into one merged PyTorch Geometric graph per complex, with experimental `ΔG` as the main label and GB energy components as auxiliary labels.
 
