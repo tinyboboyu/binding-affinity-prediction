@@ -88,6 +88,35 @@ It uses the existing saved PyTorch Geometric `Data` objects directly and does no
   Utility script that summarizes all saved graphs and writes `graph_summary.csv`.
 - `run_train_baseline.sbatch`
   Example Slurm submission script for LUNARC GPU training.
+- `scripts/prepare_md_frame_exports.py`
+  Exports frame `200/250/300/350/400` plus GB/PB per-frame summaries for `6QLN`, `6QLO`, `6QLP`, `6QLR`, `6QLT`.
+- `md_frame_labels.py`, `md_frame_dataset.py`, `model_baseline3.py`, `train_baseline3.py`
+  Baseline 3 PB/MMPBSA training path with crystal-only inference and MD-frame auxiliary supervision.
+
+## MD frame export utility
+
+To prepare baseline 3/4 snapshot assets without writing back into the original MM/PBSA folders:
+
+```bash
+cd /lunarc/nobackup/projects/teobio/Xiaofan/binding_affinity_prediction/code
+PYTHONNOUSERSITE=1 python scripts/prepare_md_frame_exports.py --check-only
+```
+
+Default output root:
+
+```text
+/lunarc/nobackup/projects/teobio/Xiaofan/binding_affinity_prediction/data/md_frame_exports
+```
+
+Each exported PDB ID gets its own folder containing:
+
+- `frame_200.pdb`
+- `frame_250.pdb`
+- `frame_300.pdb`
+- `frame_350.pdb`
+- `frame_400.pdb`
+- `snapshot_energy_summary.csv`
+- `snapshot_energy_summary.md`
 
 ### Model behavior
 
@@ -242,6 +271,93 @@ Main training arguments:
 - `--print_every`
 - `--device`
 
+## Baseline 3
+
+Baseline 3 keeps crystal-only inference, but adds MD-frame PB/MMPBSA supervision during training.
+
+- Crystal outputs:
+  - `pred_exp`
+  - `pred_avg_pb`
+- Frame auxiliary output:
+  - `pred_frame_pb`
+- Unified PB target vector:
+  - `[vdw, elec, polar_solv, nonpolar_solv, dispersion, total]`
+
+Example rotating split run:
+
+```bash
+cd /lunarc/nobackup/projects/teobio/Xiaofan/binding_affinity_prediction/code
+PYTHONNOUSERSITE=1 python train_baseline3.py \
+  --graph_dir ../data/MMPBSA/processed/graphs \
+  --raw_root_dir ../data/MMPBSA \
+  --frame_root_dir ../data/md_frame_exports \
+  --split_mode rotating_train_val_test \
+  --split_round 1 \
+  --normalize_labels true \
+  --epochs 20 \
+  --print_every 5
+```
+
+Example leave-one-out run:
+
+```bash
+PYTHONNOUSERSITE=1 python train_baseline3.py \
+  --graph_dir ../data/MMPBSA/processed/graphs \
+  --raw_root_dir ../data/MMPBSA \
+  --frame_root_dir ../data/md_frame_exports \
+  --split_mode leave_one_out \
+  --test_sample_id 6QLN \
+  --val_mode deterministic \
+  --normalize_labels true
+```
+
+Formal leave-one-out recommendation:
+
+- keep one held-out `test` sample
+- keep one deterministic `val` sample for model selection
+- train on the remaining three samples
+
+This avoids selecting the best epoch from training loss only.
+
+Each Baseline 3 run now saves:
+
+- `best_model.pt`
+- `best_predictions.csv`
+- `best_validation_predictions.csv` when validation is used
+- `label_normalization_stats.json`
+- `split_info.json`
+- `run_config.json`
+- `graph_debug_summary.csv`
+- `train_log.csv`
+
+Recommended formal Baseline 3 defaults:
+
+```text
+split_mode = rotating_train_val_test
+split_round = 1..5
+epochs = 300
+batch_size = 1
+lr = 1e-3
+hidden_dim = 64
+num_layers = 2
+lambda_avg = 0.1
+lambda_frame = 0.03
+normalize_labels = true
+```
+
+For formal GPU runs, let `train_baseline3.py` use its default save directory so each run is written directly under:
+
+```text
+../results/training_runs/
+```
+
+Example directory names:
+
+```text
+../results/training_runs/baseline3_rotating_train_val_test_round_1_val_6QLO_test_6QLN/
+../results/training_runs/baseline3_leave_one_out_test_6QLN_deterministic_val_6QLO/
+```
+
 Default values:
 
 ```text
@@ -299,6 +415,27 @@ The provided Slurm script currently runs a leave-one-out experiment by default. 
 - `overfit_one`
 - `overfit_all`
 - `leave_one_out`
+
+Baseline 3 formal rotating scripts:
+
+```text
+run_train_baseline3_rotating.sbatch
+submit_baseline3_rotating_all.sh
+```
+
+Single rotating round:
+
+```bash
+cd /lunarc/nobackup/projects/teobio/Xiaofan/binding_affinity_prediction/code
+sbatch --export=ALL,SPLIT_ROUND=1 run_train_baseline3_rotating.sbatch
+```
+
+Submit all five rotating rounds:
+
+```bash
+cd /lunarc/nobackup/projects/teobio/Xiaofan/binding_affinity_prediction/code
+bash submit_baseline3_rotating_all.sh
+```
 
 ## Training outputs
 
