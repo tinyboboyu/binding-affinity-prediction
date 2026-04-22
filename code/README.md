@@ -66,9 +66,11 @@ python -m binding_graph_preprocessing.cli \
 - Experimental values in `bd` are converted from kJ/mol to kcal/mol.
 - GB terms from `mmpbsa.out` are read directly in kcal/mol.
 
-## Training baseline
+## Training baselines
 
-The first stable training baseline is built around the already processed graph files in:
+## Baseline 2
+
+Baseline 2 is the original stable training baseline built around the already processed graph files in:
 
 ```text
 ../data/MMPBSA/processed/graphs
@@ -76,7 +78,7 @@ The first stable training baseline is built around the already processed graph f
 
 It uses the existing saved PyTorch Geometric `Data` objects directly and does not redesign the graph format.
 
-### Training files
+### Baseline 2 training files
 
 - `dataset.py`
   Loads the saved `.pt` graph files in a deterministic order.
@@ -88,14 +90,10 @@ It uses the existing saved PyTorch Geometric `Data` objects directly and does no
   Utility script that summarizes all saved graphs and writes `graph_summary.csv`.
 - `run_train_baseline.sbatch`
   Example Slurm submission script for LUNARC GPU training.
-- `scripts/prepare_md_frame_exports.py`
-  Exports frame `200/250/300/350/400` plus GB/PB per-frame summaries for `6QLN`, `6QLO`, `6QLP`, `6QLR`, `6QLT`.
-- `md_frame_labels.py`, `md_frame_dataset.py`, `model_baseline3.py`, `train_baseline3.py`
-  Baseline 3 PB/MMPBSA training path with crystal-only inference and MD-frame auxiliary supervision.
 
 ## MD frame export utility
 
-To prepare baseline 3/4 snapshot assets without writing back into the original MM/PBSA folders:
+To prepare Baseline 3 snapshot assets without writing back into the original MM/PBSA folders:
 
 ```bash
 cd /lunarc/nobackup/projects/teobio/Xiaofan/binding_affinity_prediction/code
@@ -118,7 +116,7 @@ Each exported PDB ID gets its own folder containing:
 - `snapshot_energy_summary.csv`
 - `snapshot_energy_summary.md`
 
-### Model behavior
+### Baseline 2 model behavior
 
 This baseline is a structure-only multi-task regression model.
 
@@ -149,7 +147,7 @@ Only these five samples are valid and used anywhere in training:
 
 `6QLQ` and `6QLU` are excluded and must not be used.
 
-## Local training
+## Baseline 2 local training
 
 When using your conda environment on LUNARC, it is recommended to run with:
 
@@ -275,6 +273,25 @@ Main training arguments:
 
 Baseline 3 keeps crystal-only inference, but adds MD-frame PB/MMPBSA supervision during training.
 
+### Baseline 3 files
+
+- `scripts/prepare_md_frame_exports.py`
+  Exports frame `200/250/300/350/400` plus per-frame PB summaries for `6QLN`, `6QLO`, `6QLP`, `6QLR`, `6QLT`.
+- `md_frame_labels.py`
+  Loads crystal-level experimental labels together with averaged PB targets and frame-level PB targets.
+- `md_frame_dataset.py`
+  Builds crystal graphs plus optional MD-frame graph batches for the Baseline 3 training path.
+- `model_baseline3.py`
+  Defines the crystal-only inference model with average-PB and frame-PB supervision heads.
+- `normalization_baseline3.py`
+  Computes and applies label normalization for `y_exp`, averaged PB targets, and frame PB targets.
+- `splits_baseline3.py`
+  Resolves rotating train/val/test splits and leave-one-out split definitions.
+- `train_baseline3.py`
+  Main Baseline 3 training entry point.
+- `evaluate_baseline3_runs.py`
+  Aggregates formal Baseline 3 run outputs and produces summary CSVs plus parity plots.
+
 - Crystal outputs:
   - `pred_exp`
   - `pred_avg_pb`
@@ -318,6 +335,22 @@ Formal leave-one-out recommendation:
 - train on the remaining three samples
 
 This avoids selecting the best epoch from training loss only.
+
+Example evaluation after all rotating runs finish:
+
+```bash
+cd /lunarc/nobackup/projects/teobio/Xiaofan/binding_affinity_prediction/code
+PYTHONNOUSERSITE=1 python evaluate_baseline3_runs.py \
+  --results_root ../results/training_runs
+```
+
+This writes merged prediction tables and publication-style parity figures into the results root:
+
+```text
+../results/training_runs/baseline3_merged_predictions.csv
+../results/training_runs/baseline3_summary_metrics.csv
+../results/training_runs/baseline3_exp_parity_plot.png
+```
 
 Each Baseline 3 run now saves:
 
@@ -595,7 +628,7 @@ If even the single-sample overfit run does not improve, inspect:
 
 下面是上面训练部分的中文说明，便于直接查阅和在 LUNARC 上使用。
 
-### 训练相关文件
+### Baseline 2 训练相关文件
 
 - `dataset.py`
   负责按固定顺序加载已经生成好的 `.pt` 图文件。
@@ -608,9 +641,9 @@ If even the single-sample overfit run does not improve, inspect:
 - `run_train_baseline.sbatch`
   用于在 LUNARC 上提交 GPU 训练任务的 Slurm 示例脚本。
 
-### 训练输入和目标
+### Baseline 2 训练输入和目标
 
-这个第一版模型是一个“只看结构”的多任务回归模型。
+这里原先的第一版训练方案现在统一命名为 `baseline2`。它是一个“只看结构”的多任务回归模型。
 
 - 模型真正使用的输入：
   - `x`
@@ -639,7 +672,7 @@ If even the single-sample overfit run does not improve, inspect:
 
 `6QLQ` 和 `6QLU` 不参与训练，也不参与任何评估。
 
-## 本地训练命令
+## Baseline 2 本地训练命令
 
 在 LUNARC 的 conda 环境里，推荐统一使用：
 
@@ -805,6 +838,123 @@ lambda_aux = 1.0
 seed = 42
 print_every = 20
 ```
+
+## Baseline 3 中文说明
+
+`baseline3` 保持“推理时只看 crystal 结构”，但在训练时额外加入 MD frame 的 PB/MMPBSA 监督。
+
+### Baseline 3 相关文件
+
+- `scripts/prepare_md_frame_exports.py`
+  导出 `frame_200/250/300/350/400` 以及每个样本的 PB 汇总文件。
+- `md_frame_labels.py`
+  负责整理 `y_exp`、平均 PB 标签和 frame 级 PB 标签。
+- `md_frame_dataset.py`
+  构造 Baseline 3 所需的 crystal 图和 frame 图批次。
+- `model_baseline3.py`
+  定义 Baseline 3 模型。
+- `normalization_baseline3.py`
+  负责标签标准化。
+- `splits_baseline3.py`
+  负责 rotating train/val/test 和 leave-one-out 划分。
+- `train_baseline3.py`
+  Baseline 3 主训练脚本。
+- `evaluate_baseline3_runs.py`
+  汇总多次运行结果并生成评估图表。
+
+### Baseline 3 训练目标
+
+- crystal 主输出：
+  - `pred_exp`
+  - `pred_avg_pb`
+- frame 辅助输出：
+  - `pred_frame_pb`
+- 统一 PB 目标向量：
+  - `[vdw, elec, polar_solv, nonpolar_solv, dispersion, total]`
+
+### Baseline 3 推荐训练命令
+
+rotating split 示例：
+
+```bash
+cd /lunarc/nobackup/projects/teobio/Xiaofan/binding_affinity_prediction/code
+PYTHONNOUSERSITE=1 python train_baseline3.py \
+  --graph_dir ../data/MMPBSA/processed/graphs \
+  --raw_root_dir ../data/MMPBSA \
+  --frame_root_dir ../data/md_frame_exports \
+  --split_mode rotating_train_val_test \
+  --split_round 1 \
+  --normalize_labels true \
+  --epochs 20 \
+  --print_every 5
+```
+
+leave-one-out 示例：
+
+```bash
+PYTHONNOUSERSITE=1 python train_baseline3.py \
+  --graph_dir ../data/MMPBSA/processed/graphs \
+  --raw_root_dir ../data/MMPBSA \
+  --frame_root_dir ../data/md_frame_exports \
+  --split_mode leave_one_out \
+  --test_sample_id 6QLN \
+  --val_mode deterministic \
+  --normalize_labels true
+```
+
+正式 Baseline 3 rotating 配置建议：
+
+```text
+split_mode = rotating_train_val_test
+split_round = 1..5
+epochs = 300
+batch_size = 1
+lr = 1e-3
+hidden_dim = 64
+num_layers = 2
+lambda_avg = 0.1
+lambda_frame = 0.03
+normalize_labels = true
+```
+
+### Baseline 3 Slurm 提交
+
+可直接使用：
+
+```text
+run_train_baseline3_rotating.sbatch
+submit_baseline3_rotating_all.sh
+```
+
+单轮提交：
+
+```bash
+cd /lunarc/nobackup/projects/teobio/Xiaofan/binding_affinity_prediction/code
+sbatch --export=ALL,SPLIT_ROUND=1 run_train_baseline3_rotating.sbatch
+```
+
+一次提交 5 轮：
+
+```bash
+cd /lunarc/nobackup/projects/teobio/Xiaofan/binding_affinity_prediction/code
+bash submit_baseline3_rotating_all.sh
+```
+
+### Baseline 3 评估
+
+所有 rotating 结果完成后，可以运行：
+
+```bash
+cd /lunarc/nobackup/projects/teobio/Xiaofan/binding_affinity_prediction/code
+PYTHONNOUSERSITE=1 python evaluate_baseline3_runs.py \
+  --results_root ../results/training_runs
+```
+
+评估脚本会汇总 `baseline3_*` 运行目录下的 `best_predictions.csv`，并直接在 `../results/training_runs/` 下生成：
+
+- `baseline3_merged_predictions.csv`
+- `baseline3_summary_metrics.csv`
+- `baseline3_exp_parity_plot.png`
 
 ## LUNARC 上的 Slurm 提交流程
 
