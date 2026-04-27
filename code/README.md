@@ -131,7 +131,7 @@ No MD frames are required during inference.
 
 ### Baseline 4: Baseline 3 + Representation Distillation
 
-Baseline 4 is the next planned variant. It adds representation distillation from MD frame embeddings to the crystal embedding.
+Baseline 4 adds representation distillation from MD frame embeddings to the crystal embedding.
 
 MD frame embeddings are mean-pooled into a teacher representation:
 
@@ -157,13 +157,13 @@ Inference:
 ## Current Repository Status
 
 - `baseline1`
-  Conceptually defined, but not exposed as a separate standalone training script in the current repository.
-- `baseline2`
-  Implemented and runnable. Includes overfit checks, leave-one-out runs, and a validation-based `Scheme A` protocol.
+  Implemented and runnable as a separate crystal-only training pipeline.
+- `baseline2_pb`
+  Implemented and runnable. Adds averaged PB/MM-PBSA auxiliary supervision while keeping crystal-only inference.
 - `baseline3`
   Implemented and tested. The repository already contains the rotating 5-run training workflow and an evaluation script that aggregates the results.
 - `baseline4`
-  Not implemented yet as a separate training pipeline. Only the shared data-preparation step for future frame-based experiments is available.
+  Implemented and runnable. Adds MD-frame representation distillation on top of the Baseline 3 training setup.
 
 ## Preprocessing overview
 
@@ -235,6 +235,31 @@ python -m binding_graph_preprocessing.cli \
 
 ## Training baselines
 
+## Baseline 1
+
+Baseline 1 is the standalone crystal-only training pipeline.
+
+### Baseline 1 files
+
+- `model_baseline1.py`
+  Defines the experimental Delta G regression model.
+- `train_baseline1.py`
+  Main Baseline 1 training entry point.
+- `run_train_baseline1_rotating.sbatch`
+  Slurm script for one rotating train/val/test round.
+- `submit_baseline1_rotating_all.sh`
+  Helper script to submit all five rotating rounds.
+- `evaluate_baseline1_runs.py`
+  Aggregates formal Baseline 1 run outputs into merged predictions, summary metrics, and a parity plot.
+
+Example evaluation after all rotating runs finish:
+
+```bash
+cd /lunarc/nobackup/projects/teobio/Xiaofan/binding_affinity_prediction/code
+PYTHONNOUSERSITE=1 python evaluate_baseline1_runs.py \
+  --results_root ../results/training_runs
+```
+
 ## Baseline 2
 
 Baseline 2 is the original stable training baseline built around the already processed graph files in:
@@ -257,6 +282,31 @@ It uses the existing saved PyTorch Geometric `Data` objects directly and does no
   Utility script that summarizes all saved graphs and writes `graph_summary.csv`.
 - `run_train_baseline.sbatch`
   Example Slurm submission script for LUNARC GPU training.
+
+## Baseline 2-PB
+
+Baseline 2-PB is the completed averaged PB/MM-PBSA auxiliary-supervision variant. It uses crystal graphs at inference time and predicts experimental Delta G together with averaged PB terms during training.
+
+### Baseline 2-PB files
+
+- `model_baseline2_pb.py`
+  Defines the crystal encoder with experimental and averaged-PB output heads.
+- `train_baseline2_pb.py`
+  Main Baseline 2-PB training entry point.
+- `run_train_baseline2_pb_rotating.sbatch`
+  Slurm script for one rotating train/val/test round.
+- `submit_baseline2_pb_rotating_all.sh`
+  Helper script to submit all five rotating rounds.
+- `evaluate_baseline2_pb_runs.py`
+  Aggregates formal Baseline 2-PB run outputs into merged predictions, summary metrics, auxiliary PB diagnostics, and a parity plot.
+
+Example evaluation after all rotating runs finish:
+
+```bash
+cd /lunarc/nobackup/projects/teobio/Xiaofan/binding_affinity_prediction/code
+PYTHONNOUSERSITE=1 python evaluate_baseline2_pb_runs.py \
+  --results_root ../results/training_runs
+```
 
 ## MD frame export utility
 
@@ -572,6 +622,31 @@ num_layers = 2
 lambda_aux = 1.0
 seed = 42
 print_every = 20
+```
+
+## Baseline 4
+
+Baseline 4 extends Baseline 3 with representation distillation from MD-frame embeddings into the crystal-only representation.
+
+### Baseline 4 files
+
+- `model_baseline4.py`
+  Defines the Baseline 3-style model plus the distillation projection.
+- `train_baseline4.py`
+  Main Baseline 4 training entry point.
+- `run_train_baseline4_rotating.sbatch`
+  Slurm script for one rotating train/val/test round.
+- `submit_baseline4_rotating_all.sh`
+  Helper script to submit all five rotating rounds.
+- `evaluate_baseline4_runs.py`
+  Aggregates formal Baseline 4 run outputs into merged predictions, summary metrics, and a parity plot.
+
+Example evaluation after all rotating runs finish:
+
+```bash
+cd /lunarc/nobackup/projects/teobio/Xiaofan/binding_affinity_prediction/code
+PYTHONNOUSERSITE=1 python evaluate_baseline4_runs.py \
+  --results_root ../results/training_runs
 ```
 
 ## LUNARC Slurm workflow

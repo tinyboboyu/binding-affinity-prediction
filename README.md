@@ -133,7 +133,7 @@ No MD frames are required during inference.
 
 ### Baseline 4: Baseline 3 + Representation Distillation
 
-Baseline 4 is the next planned variant. It adds representation distillation from MD frame embeddings to the crystal embedding.
+Baseline 4 adds representation distillation from MD frame embeddings to the crystal embedding.
 
 MD frame embeddings are mean-pooled into a teacher representation:
 
@@ -168,13 +168,13 @@ Inference:
 ## Current Repository Status
 
 - `baseline1`
-  Conceptually defined, but not exposed as a separate standalone training script in the current repository.
-- `baseline2`
-  Implemented and runnable. Supports `overfit_one`, `overfit_all`, `leave_one_out`, and validation-based `Scheme A`.
+  Implemented and runnable as a separate crystal-only training pipeline.
+- `baseline2_pb`
+  Implemented and runnable. Adds averaged PB/MM-PBSA auxiliary supervision while keeping crystal-only inference.
 - `baseline3`
   Implemented and tested. The repository includes the rotating 5-run training workflow, Slurm submission scripts, and an evaluation summary script.
 - `baseline4`
-  Not implemented yet as a separate training pipeline. The shared MD frame export step already exists for future experiments.
+  Implemented and runnable. Adds MD-frame representation distillation on top of the Baseline 3 training setup.
 
 ## 目录结构 | Layout
 
@@ -196,9 +196,11 @@ Inference:
 - 代码说明 / Code overview:
   `code/README.md`
 - 训练脚本 / Training script:
-  `code/train_baseline.py`
+  `code/train_baseline.py`, `code/train_baseline1.py`, `code/train_baseline2_pb.py`, `code/train_baseline3.py`, `code/train_baseline4.py`
+- 评估脚本 / Evaluation scripts:
+  `code/evaluate_baseline1_runs.py`, `code/evaluate_baseline2_pb_runs.py`, `code/evaluate_baseline3_runs.py`, `code/evaluate_baseline4_runs.py`
 - 默认 Slurm 脚本 / Main Slurm script:
-  `code/run_train_baseline.sbatch`
+  `code/run_train_baseline.sbatch`, `code/run_train_baseline1_rotating.sbatch`, `code/run_train_baseline2_pb_rotating.sbatch`, `code/run_train_baseline3_rotating.sbatch`, `code/run_train_baseline4_rotating.sbatch`
 - 预处理入口 / Preprocessing CLI:
   `code/binding_graph_preprocessing/cli.py`
 
