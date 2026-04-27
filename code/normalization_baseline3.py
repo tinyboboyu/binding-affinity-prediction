@@ -16,6 +16,82 @@ def _safe_std(tensor: torch.Tensor) -> torch.Tensor:
 
 
 @dataclass
+class ExpLabelNormalizer:
+    enabled: bool
+    exp_mean: torch.Tensor
+    exp_std: torch.Tensor
+
+    @classmethod
+    def from_training_graphs(cls, training_graphs: list[object], enabled: bool = True) -> "ExpLabelNormalizer":
+        exp = torch.tensor(
+            [[float(graph.y_exp.view(-1)[0].item())] for graph in training_graphs],
+            dtype=torch.float32,
+        )
+        return cls(
+            enabled=enabled,
+            exp_mean=exp.mean(dim=0),
+            exp_std=_safe_std(exp),
+        )
+
+    def normalize_exp(self, tensor: torch.Tensor) -> torch.Tensor:
+        return tensor if not self.enabled else (tensor - self.exp_mean.to(tensor.device)) / self.exp_std.to(tensor.device)
+
+    def denormalize_exp(self, tensor: torch.Tensor) -> torch.Tensor:
+        return tensor if not self.enabled else tensor * self.exp_std.to(tensor.device) + self.exp_mean.to(tensor.device)
+
+    def save(self, path: str | Path) -> None:
+        payload = {
+            "enabled": self.enabled,
+            "exp_mean": self.exp_mean.tolist(),
+            "exp_std": self.exp_std.tolist(),
+        }
+        Path(path).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+@dataclass
+class ExpAvgPBLabelNormalizer:
+    enabled: bool
+    exp_mean: torch.Tensor
+    exp_std: torch.Tensor
+    avg_pb_mean: torch.Tensor
+    avg_pb_std: torch.Tensor
+
+    @classmethod
+    def from_training_records(cls, training_records: list[object], enabled: bool = True) -> "ExpAvgPBLabelNormalizer":
+        exp = torch.tensor([[float(getattr(record, "y_exp"))] for record in training_records], dtype=torch.float32)
+        avg_pb = torch.stack([getattr(record, "y_avg_pb") for record in training_records]).float()
+        return cls(
+            enabled=enabled,
+            exp_mean=exp.mean(dim=0),
+            exp_std=_safe_std(exp),
+            avg_pb_mean=avg_pb.mean(dim=0),
+            avg_pb_std=_safe_std(avg_pb),
+        )
+
+    def normalize_exp(self, tensor: torch.Tensor) -> torch.Tensor:
+        return tensor if not self.enabled else (tensor - self.exp_mean.to(tensor.device)) / self.exp_std.to(tensor.device)
+
+    def normalize_avg_pb(self, tensor: torch.Tensor) -> torch.Tensor:
+        return tensor if not self.enabled else (tensor - self.avg_pb_mean.to(tensor.device)) / self.avg_pb_std.to(tensor.device)
+
+    def denormalize_exp(self, tensor: torch.Tensor) -> torch.Tensor:
+        return tensor if not self.enabled else tensor * self.exp_std.to(tensor.device) + self.exp_mean.to(tensor.device)
+
+    def denormalize_avg_pb(self, tensor: torch.Tensor) -> torch.Tensor:
+        return tensor if not self.enabled else tensor * self.avg_pb_std.to(tensor.device) + self.avg_pb_mean.to(tensor.device)
+
+    def save(self, path: str | Path) -> None:
+        payload = {
+            "enabled": self.enabled,
+            "exp_mean": self.exp_mean.tolist(),
+            "exp_std": self.exp_std.tolist(),
+            "avg_pb_mean": self.avg_pb_mean.tolist(),
+            "avg_pb_std": self.avg_pb_std.tolist(),
+        }
+        Path(path).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+@dataclass
 class LabelNormalizer:
     enabled: bool
     exp_mean: torch.Tensor

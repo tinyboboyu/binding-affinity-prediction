@@ -23,29 +23,61 @@ PB_TARGET_KEYS = [
     "dispersion",
     "total",
 ]
+PB_AVERAGE_SOURCE_SECTION = "POISSON BOLTZMANN"
+PB_AVERAGE_SOURCE_BLOCK = "Differences (Complex - Receptor - Ligand)"
+
+
+def _available_mmpbsa_headers(lines: list[str]) -> list[str]:
+    headers: list[str] = []
+    markers = (
+        "GENERALIZED BORN",
+        "POISSON BOLTZMANN",
+        "Complex:",
+        "Receptor:",
+        "Ligand:",
+        "Differences (Complex - Receptor - Ligand)",
+    )
+    for index, line in enumerate(lines, start=1):
+        stripped = line.strip()
+        if any(marker in stripped for marker in markers):
+            headers.append(f"line {index}: {stripped}")
+    return headers
+
+
+def _format_available_headers(lines: list[str]) -> str:
+    headers = _available_mmpbsa_headers(lines)
+    if not headers:
+        return "No recognized MMPBSA section/block headers were found."
+    return "Available MMPBSA section/block headers:\n  " + "\n  ".join(headers)
 
 
 def parse_average_pb_labels(mmpbsa_path: str | Path) -> dict[str, float]:
-    """Parse binding-level average PB labels from ``mmpbsa.out``."""
+    """Parse binding-level average PB labels from the PB Differences block."""
     path = Path(mmpbsa_path)
     if not path.exists():
         raise FileNotFoundError(f"MMPBSA output not found: {path}")
 
     lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
-    pb_start = next((index for index, line in enumerate(lines) if "POISSON BOLTZMANN" in line), None)
+    pb_start = next((index for index, line in enumerate(lines) if PB_AVERAGE_SOURCE_SECTION in line), None)
     if pb_start is None:
-        raise ValueError(f"POISSON BOLTZMANN section not found in {path}")
+        raise ValueError(
+            f"{PB_AVERAGE_SOURCE_SECTION} section not found in {path}.\n"
+            f"{_format_available_headers(lines)}"
+        )
 
     diff_start = next(
         (
             index
             for index in range(pb_start, len(lines))
-            if "Differences (Complex - Receptor - Ligand)" in lines[index]
+            if PB_AVERAGE_SOURCE_BLOCK in lines[index]
         ),
         None,
     )
     if diff_start is None:
-        raise ValueError(f"PB differences block not found in {path}")
+        raise ValueError(
+            f"PB {PB_AVERAGE_SOURCE_BLOCK} block not found after {PB_AVERAGE_SOURCE_SECTION} "
+            f"section in {path}.\n{_format_available_headers(lines)}"
+        )
 
     parsed: dict[str, float] = {}
     target_keys = {"VDWAALS", "EEL", "EPB", "ENPOLAR", "EDISPER", "TOTAL", "DELTA TOTAL"}
@@ -114,4 +146,3 @@ def parse_frame_pb_labels(summary_csv_path: str | Path) -> dict[str, dict[str, f
     if not by_snapshot:
         raise ValueError(f"No PB rows found in {path}")
     return by_snapshot
-
