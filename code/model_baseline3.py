@@ -49,7 +49,7 @@ class Baseline3PBModel(nn.Module):
         self.head_frame_pb = nn.Linear(hidden_dim, 6)
 
     def forward(self, crystal_batch, frame_batch=None) -> dict[str, torch.Tensor | None]:
-        h_crystal = self.encoder(crystal_batch)
+        h_crystal = self.encoder(  )
         pred_exp = self.head_exp(h_crystal)
         pred_avg_pb = self.head_avg_pb(h_crystal)
 

@@ -220,6 +220,44 @@ Python executable currently used by the Slurm scripts:
 /lunarc/nobackup/projects/teobio/Xiaofan/pl_gnn_v1/bin/python
 ```
 
+## Streamlit Crystal-Only Inference Demo
+
+The local web demo is implemented in `app/streamlit_app.py`. It runs one uploaded
+protein-ligand `complex.pdb` through the crystal-only inference path and supports
+Baseline 1, Baseline 2, Baseline 3, and Baseline 4 through preset checkpoint
+paths defined near the top of the app file.
+
+Streamlit is not installed automatically. If it is missing from the project
+environment, install it explicitly:
+
+```bash
+PYTHONNOUSERSITE=1 /lunarc/nobackup/projects/teobio/Xiaofan/pl_gnn_v1/bin/python -m pip install streamlit
+```
+
+Run the app on the LUNARC login node:
+
+```bash
+streamlit run app/streamlit_app.py --server.address 127.0.0.1 --server.port 8501 --server.headless true
+```
+
+If PyTorch or PyG fails with a `GLIBCXX`/`libstdc++` error, run with the project
+environment library path:
+
+```bash
+LD_LIBRARY_PATH=/lunarc/nobackup/projects/teobio/Xiaofan/pl_gnn_v1/lib streamlit run app/streamlit_app.py --server.address 127.0.0.1 --server.port 8501 --server.headless true
+```
+
+From a local computer, forward the port before opening `http://127.0.0.1:8501`:
+
+```bash
+ssh -L 8501:127.0.0.1:8501 <user>@<lunarc-login-host>
+```
+
+The demo requires only a single PDB file containing both protein and ligand
+coordinates plus the ligand residue name, residue ID, and optional chain ID. It
+does not require MD frames, MM/PBSA files, or experimental labels during
+inference.
+
 ## 常用流程 | Typical Workflow
 
 进入代码目录：  
