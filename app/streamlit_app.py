@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import tempfile
-import traceback
 from pathlib import Path
 
 import streamlit as st
@@ -20,6 +19,20 @@ from predict_complex import DEFAULT_TEMPERATURE_K, PB_TARGET_KEYS, predict_from_
 
 
 RESULTS_ROOT = REPO_ROOT / "results" / "training_runs"
+PB_DISPLAY_NAMES = {
+    "vdw": "VDWAALS",
+    "elec": "EEL",
+    "polar_solv": "EPB",
+    "nonpolar_solv": "ENPOLAR",
+    "dispersion": "EDISPER",
+    "total": "DELTA TOTAL",
+}
+BASELINE_DESCRIPTIONS = {
+    "Baseline 1": "Trained with complex structure and ΔG.",
+    "Baseline 2": "Trained with complex structure, ΔG, and MMPBSA terms.",
+    "Baseline 3": "Trained with complex structure, ΔG, MMPBSA terms, and MD frame-level MMPBSA terms.",
+    "Baseline 4": "Based on Baseline 3 and uses representation distillation.",
+}
 
 
 def make_preset(model_type: str, run_name: str) -> dict[str, Path | str]:
@@ -54,67 +67,38 @@ MODEL_PRESETS = {
 }
 
 
-def path_status(path: Path, required: bool = True) -> None:
-    if path.exists():
-        st.sidebar.success(f"Found: `{path}`")
-    elif required:
-        st.sidebar.error(f"Missing: `{path}`")
-    else:
-        st.sidebar.warning(f"Optional file not found: `{path}`")
-
-
-def graph_summary_rows(summary: dict[str, object]) -> list[dict[str, object]]:
-    labels = {
-        "num_nodes": "nodes",
-        "num_edges": "directed edges",
-        "num_ligand_atoms": "ligand atoms",
-        "num_protein_atoms": "protein atoms",
-        "num_metal_atoms": "metal atoms",
-        "node_feature_dim": "node feature dim",
-        "edge_feature_dim": "edge feature dim",
-    }
-    return [{"item": labels.get(key, key), "value": value} for key, value in summary.items()]
-
-
 def pb_rows(pred_avg_pb: dict[str, float]) -> list[dict[str, object]]:
     return [
-        {"term": key, "predicted value (kcal/mol)": f"{float(pred_avg_pb[key]):.4f}"}
+        {"term": PB_DISPLAY_NAMES[key], "predicted value (kcal/mol)": f"{float(pred_avg_pb[key]):.4f}"}
         for key in PB_TARGET_KEYS
         if key in pred_avg_pb
     ]
 
 
+def render_baseline_descriptions() -> None:
+    st.sidebar.subheader("Baseline Information")
+    for label, description in BASELINE_DESCRIPTIONS.items():
+        st.sidebar.markdown(f"**{label}**  \n{description}")
+
+
 def render_result(result: dict[str, object]) -> None:
     st.subheader("Prediction")
     col1, col2, col3 = st.columns(3)
-    col1.metric("Delta G (kcal/mol)", f"{float(result['pred_exp_kcal']):.3f}")
-    col2.metric("Delta G (kJ/mol)", f"{float(result['pred_exp_kj']):.3f}")
+    col1.metric("ΔG (kcal/mol)", f"{float(result['pred_exp_kcal']):.3f}")
+    col2.metric("ΔG (kJ/mol)", f"{float(result['pred_exp_kj']):.3f}")
     col3.metric("Estimated Kd", str(result["estimated_kd_display"]))
-    st.caption(f"Estimated Kd is converted from predicted Delta G assuming T = {DEFAULT_TEMPERATURE_K} K.")
+    st.caption(f"Estimated Kd is converted from predicted ΔG assuming T = {DEFAULT_TEMPERATURE_K} K.")
 
     pred_avg_pb = result.get("pred_avg_pb")
     if pred_avg_pb:
         st.subheader("Predicted Average PB/MM-PBSA Terms")
+        st.caption("Source target: POISSON BOLTZMANN / Differences (Complex - Receptor - Ligand).")
         st.table(pb_rows(pred_avg_pb))
-
-    st.subheader("Graph Summary")
-    st.table(graph_summary_rows(result["graph_summary"]))
-
-    with st.expander("Debug details"):
-        st.write(
-            {
-                "model_type": result["model_type"],
-                "best_epoch": result["best_epoch"],
-                "checkpoint_path": result["checkpoint_path"],
-                "normalization_stats_path": result["normalization_stats_path"],
-                "estimated_kd_molar": result["estimated_kd_molar"],
-            }
-        )
 
 
 def main() -> None:
-    st.set_page_config(page_title="Crystal-Only Binding Affinity Prediction Demo", layout="centered")
-    st.title("Crystal-Only Binding Affinity Prediction Demo")
+    st.set_page_config(page_title="Binding Affinity Prediction Demo", layout="centered")
+    st.title("Binding Affinity Prediction Demo")
     st.write(
         "Upload one protein-ligand complex PDB containing both protein and ligand coordinates. "
         "Inference uses only the crystal complex graph."
@@ -126,23 +110,12 @@ def main() -> None:
     checkpoint_path = Path(preset["checkpoint_path"])
     normalization_stats_path = Path(preset["normalization_stats_path"])
 
-    st.sidebar.caption(f"Internal model type: `{preset['model_type']}`")
-    path_status(checkpoint_path, required=True)
-    path_status(normalization_stats_path, required=True)
-
-    with st.sidebar.expander("Run on LUNARC"):
-        st.code(
-            "streamlit run app/streamlit_app.py "
-            "--server.address 127.0.0.1 --server.port 8501 --server.headless true",
-            language="bash",
-        )
-        st.code("ssh -L 8501:127.0.0.1:8501 <user>@<lunarc-login-host>", language="bash")
-        st.caption("If needed, install Streamlit in the project environment before launching the app.")
+    render_baseline_descriptions()
 
     uploaded_pdb = st.file_uploader("Upload complex.pdb", type=["pdb"])
     col1, col2, col3 = st.columns([1.2, 1.0, 1.0])
-    ligand_resname = col1.text_input("Ligand residue name", value="LIG").strip()
-    ligand_resid = int(col2.number_input("Ligand residue ID", min_value=-99999, max_value=99999, value=139, step=1))
+    ligand_resname = col1.text_input("Ligand residue name", value="").strip()
+    ligand_resid_text = col2.text_input("Ligand residue ID", value="").strip()
     ligand_chain_text = col3.text_input("Ligand chain (optional)", value="").strip()
     ligand_chain = ligand_chain_text or None
 
@@ -156,11 +129,19 @@ def main() -> None:
     if not ligand_resname:
         st.error("Please provide the ligand residue name.")
         return
+    if not ligand_resid_text:
+        st.error("Please provide the ligand residue ID.")
+        return
+    try:
+        ligand_resid = int(ligand_resid_text)
+    except ValueError:
+        st.error("Ligand residue ID must be an integer.")
+        return
     if not checkpoint_path.exists():
-        st.error(f"Preset checkpoint is missing: {checkpoint_path}")
+        st.error("The selected model checkpoint is unavailable.")
         return
     if not normalization_stats_path.exists():
-        st.error(f"Preset normalization stats file is missing: {normalization_stats_path}")
+        st.error("The selected model normalization statistics are unavailable.")
         return
 
     try:
@@ -184,8 +165,6 @@ def main() -> None:
         render_result(result)
     except Exception as exc:  # pragma: no cover - Streamlit UI path
         st.error(f"Prediction failed: {exc}")
-        with st.expander("Debug details"):
-            st.code(traceback.format_exc())
 
 
 if __name__ == "__main__":
